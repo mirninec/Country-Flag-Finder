@@ -1,105 +1,100 @@
+console.log("init");
 
-
-console.log("init")
-
-const tabsArray = []
+const tabsArray = [];
 
 async function initExt() {
-
-    console.log("Вызвана функция initExt()")
+    console.log("Вызвана функция initExt()");
 
     // Загружаем данные флагов
     const flagsData = await loadFlagsData();
 
-    await chrome.tabs.query({}, async (tabs) => {
-        for (let i = 0; i < tabs.length; i++) {
-            const url = new URL(tabs[i].url);
-            const hostname = url.hostname;
-            let flagImg = await getFlagImage(hostname, flagsData);
-            tabsArray.push({
-                id: tabs[i].id,
-                hostname,
-                flagImg
-            })
-        }
+    // Запрашиваем все вкладки
+    const tabs = await new Promise((resolve) => {
+        chrome.tabs.query({}, (result) => resolve(result));
     });
+
+    for (let tab of tabs) {
+        const url = new URL(tab.url);
+        const hostname = url.hostname;
+        const flagImg = await getFlagImage(hostname, flagsData);
+        tabsArray.push({
+            id: tab.id,
+            hostname,
+            flagImg
+        });
+    }
 
     chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         if (changeInfo.status === 'complete' && tab.active) {
             const url = new URL(tab.url);
             const hostname = url.hostname;
-            let flagImg = await getFlagImage(hostname, flagsData);
-            chrome.action.setIcon({ path: `${flagImg.flag}`, tabId})
+            const flagImg = await getFlagImage(hostname, flagsData);
+            chrome.action.setIcon({ path: { "16": flagImg.flag }, tabId });
             chrome.action.setTitle({ title: `Сервер сайта находится в ${flagImg.countryName}`, tabId });
             tabsArray.push({
                 id: tabId,
                 hostname,
                 flagImg
-            })           
+            });
         }
-
     });
 
-    console.log(tabsArray)
+    console.log(tabsArray);
 }
 
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
-    // console.log(`Вкладка ${activeInfo.tabId} теперь активна в окне ${activeInfo.windowId}`);
-    let isExist = false;
-    let elem;
-    tabsArray.forEach(el => {
-        if (el.id === activeInfo.tabId) {
-            elem = el
-            isExist = true
-            return
-        }
-    })
-    if(isExist){        
-        chrome.action.setIcon({ path: `${elem.flagImg.flag}`, tabId: activeInfo.tabId });
-        chrome.action.setTitle({ title: `Сервер сайта находится в ${elem.flagImg.countryName}`, tabId: activeInfo.tabId });
+    const tab = tabsArray.find(el => el.id === activeInfo.tabId);
+    if (tab) {
+        chrome.action.setIcon({ path: { "16": tab.flagImg.flag }, tabId: activeInfo.tabId });
+        chrome.action.setTitle({ title: `Сервер сайта находится в ${tab.flagImg.countryName}`, tabId: activeInfo.tabId });
     } else {
-        console.log('Ещё нет в списке', activeInfo.tabId)
+        console.log('Ещё нет в списке', activeInfo.tabId);
     }
 });
 
 async function getFlagImage(hostname, flagsData) {
-
     if (hostname === "extensions") {
         return {
             countryName: "браузер Chrome",
             flag: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAAXNSR0IArs4c6QAAAMxJREFUKFNjZCARMGJT/8bINIHhHwODyIXTC9DlUTS8NTL/j80A4XMn4ergDFyKQQaATBGBaoJrWHHe9b9r8icGNndXBl6zYrBF/93LGBj+rAWzGfnegdWCieVnnRIYmZjn2xd9ZZDM24riqv/OylD+vyRGvg/zwRqWnXeOZ2JgAnsw4sEqXBoSGfk+LEBxEkilnIAjg9WFTKiTShgY/qzHdBJIBOQH9BAKVz4LF0LxA0wUWRM2xXBPo5u84qJLXLjiGSaQm/FGHDGpBACwJkMN0HyvrgAAAABJRU5ErkJggg=='
-        }
+        };
     }
 
     try {
-        const ip = await fetch(`https://dnsjson.com/${hostname}/A.json`)
-            .then(response => response.json())
-            .then(data => {
-                return data["results"]["records"];
-            });
+        const ipResponse = await fetch(`https://dnsjson.com/${hostname}/A.json`);
+        const ipData = await ipResponse.json();
+        const ip = ipData.results.records[0];
 
-        const response = await fetch(`https://ipapi.co/${ip[0]}/json/`);
-        const data = await response.json();
-        const countryCode = data.country_code;
-        const countryName = data.country_name;
+        const countryResponse = await fetch(`https://ipapi.co/${ip}/json/`);
+        const countryData = await countryResponse.json();
+        const countryCode = countryData.country_code;
+        const countryName = countryData.country_name;
 
         if (countryCode && countryName) {
-            // Получаем изображение флага из данных
             const flagData = flagsData[countryCode.toUpperCase()];
             if (flagData && flagData.bigFlagImg) {
-                // chrome.action.setIcon({ path: `data:image/png;base64,${flagData.flagImg}` });
                 return {
                     countryName,
-                    flag: `data:image/png;base64,${flagData.flagImg}`
-                }
+                    flag: `data:image/png;base64,${flagData.bigFlagImg}`
+                };
             } else {
-                countryNameElement.textContent = 'Flag not found';
+                return {
+                    countryName,
+                    flag: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAYAAAA7KqwyAAAAAXNSR0IArs4c6QAAAXRJREFUKFNj/PPnz38GJPD27VtkLoOwsDAKH12e8f///3ADQMyXL18ywIS+fPnCoKKiwsDIyAg2BF0eJAY2QGT1PYY3oUpgBbxLbzHcduZjSEtJYpg1Zx6DpKQkg6+3J8PmrdsZbvMJMXBdvwwyieGrpi4D761rDIwgLzAzM8NtePHiBQP/CSmGjxbPwGIgA0AGX3synUFLJhPFhWAXIBvw/ft3hhfPnzNwcHIy/Pj+nYHt91WGXW9iGCKNXzKws7MzvH/3nuHX719wL4IMBnthzZ4jDLlvxRjuC2gzXOA7zCCvIM9w/tw5hta2JobsvjMMJgLXGNTU1RlO19UyXJm3iEFRXZnhh4gwg/6ESRADYMH8ZQUjwxeH53Ab+I5IMSyTZGRItfkH9+LE/SwM4ZpP4DGDEQuf5rIwsMrwMPx58Znhq/tTBhEREYbZx9kZ3r7UZOASusEQrf0UbgE4DP79+4cSja9fv0ZRIC4uDrcN5Fh0eQCCJcxMnIse7gAAAABJRU5ErkJggg=='
+                };
             }
         } else {
-            countryNameElement.textContent = 'Country not found';
+            return {
+                countryName: 'Country not found',
+                flag: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAYAAAA7KqwyAAAAAXNSR0IArs4c6QAAAXRJREFUKFNj/PPnz38GJPD27VtkLoOwsDAKH12e8f///3ADQMyXL18ywIS+fPnCoKKiwsDIyAg2BF0eJAY2QGT1PYY3oUpgBbxLbzHcduZjSEtJYpg1Zx6DpKQkg6+3J8PmrdsZbvMJMXBdvwwyieGrpi4D761rDIwgLzAzM8NtePHiBQP/CSmGjxbPwGIgA0AGX3synUFLJhPFhWAXIBvw/ft3hhfPnzNwcHIy/Pj+nYHt91WGXW9iGCKNXzKws7MzvH/3nuHX719wL4IMBnthzZ4jDLlvxRjuC2gzXOA7zCCvIM9w/tw5hta2JobsvjMMJgLXGNTU1RlO19UyXJm3iEFRXZnhh4gwg/6ESRADYMH8ZQUjwxeH53Ab+I5IMSyTZGRItfkH9+LE/SwM4ZpP4DGDEQuf5rIwsMrwMPx58Znhq/tTBhEREYbZx9kZ3r7UZOASusEQrf0UbgE4DP79+4cSja9fv0ZRIC4uDrcN5Fh0eQCCJcxMnIse7gAAAABJRU5ErkJggg=='
+            };
         }
     } catch (error) {
         console.error('Ошибка при получении страны:', error);
+        return {
+            countryName: 'Error',
+            flag: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAYAAAA7KqwyAAAAAXNSR0IArs4c6QAAAXRJREFUKFNj/PPnz38GJPD27VtkLoOwsDAKH12e8f///3ADQMyXL18ywIS+fPnCoKKiwsDIyAg2BF0eJAY2QGT1PYY3oUpgBbxLbzHcduZjSEtJYpg1Zx6DpKQkg6+3J8PmrdsZbvMJMXBdvwwyieGrpi4D761rDIwgLzAzM8NtePHiBQP/CSmGjxbPwGIgA0AGX3synUFLJhPFhWAXIBvw/ft3hhfPnzNwcHIy/Pj+nYHt91WGXW9iGCKNXzKws7MzvH/3nuHX719wL4IMBnthzZ4jDLlvxRjuC2gzXOA7zCCvIM9w/tw5hta2JobsvjMMJgLXGNTU1RlO19UyXJm3iEFRXZnhh4gwg/6ESRADYMH8ZQUjwxeH53Ab+I5IMSyTZGRItfkH9+LE/SwM4ZpP4DGDEQuf5rIwsMrwMPx58Znhq/tTBhEREYbZx9kZ3r7UZOASusEQrf0UbgE4DP79+4cSja9fv0ZRIC4uDrcN5Fh0eQCCJcxMnIse7gAAAABJRU5ErkJggg=='
+        };
     }
 }
 
@@ -109,10 +104,4 @@ async function loadFlagsData() {
     return response.json();
 }
 
-async function searchId(id) {
-    data = await loadFlagsData()
-    console.log(data)
-
-}
-
-initExt()
+initExt();
