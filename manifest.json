@@ -25,6 +25,9 @@
         {
             "resources": [
                 "convertedFlags.json"
+            ],
+            "matches": [
+                "<all_urls>"
             ]
         }
     ],
