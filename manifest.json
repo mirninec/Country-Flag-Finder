@@ -1,0 +1,38 @@
+{
+    "manifest_version": 3,
+    "name": "Country Flag Finder",
+    "version": "1.0",
+    "description": "Определяет страну, в которой находится сервер отображаемого сайта, и отображает флаг в адресной строке.",
+    "permissions": [
+        "activeTab",
+        "tabs",
+        "declarativeNetRequest",
+        "storage",
+        "scripting"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": "icon.png",
+        "default_title": "В кокой стране сервер сайта"
+    },
+    "icons": {
+        "128": "icon.png"
+    },
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "convertedFlags.json"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "host_permissions": [
+        "http://*/*",
+        "https://*/*"
+    ]
+}
