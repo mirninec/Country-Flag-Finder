@@ -8,7 +8,8 @@
         "tabs",
         "declarativeNetRequest",
         "storage",
-        "scripting"
+        "scripting",
+        "nativeMessaging"
     ],
     "background": {
         "service_worker": "background.js"
