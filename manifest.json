@@ -5,19 +5,16 @@
     "description": "Определяет страну, в которой находится сервер отображаемого сайта, и отображает флаг в адресной строке.",
     "permissions": [
         "activeTab",
-        "tabs",
-        "declarativeNetRequest",
-        "storage",
-        "scripting",
-        "nativeMessaging"
+        "tabs"
     ],
     "background": {
-        "service_worker": "background.js"
+        "service_worker": "background.js",
+        "type": "module"
     },
     "action": {
         "default_popup": "popup.html",
         "default_icon": "icon.png",
-        "default_title": "В кокой стране сервер сайта"
+        "default_title": "В какой стране сервер сайта"
     },
     "icons": {
         "128": "icon.png"

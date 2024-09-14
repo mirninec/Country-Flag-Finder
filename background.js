@@ -1,120 +1,177 @@
-console.log("init");
+import { compBase64String, osWindowsImg, brauserChromeImg } from './utils.js';
 
 // Массив для хранения информации о вкладках и их флагах
-const tabsArray = [];
+/** @brief Массив, содержащий объекты с информацией о каждой вкладке, включая флаг страны. */
+let tabsArray = [];
 
-// Загружаем данные флагов из файла convertedFlags.json
+/**
+ * @brief Загружает данные о флагах из локального файла JSON.
+ * @return {Promise<Object>} Возвращает объект с данными о флагах.
+ */
 async function loadFlagsData() {
     const response = await fetch(chrome.runtime.getURL('convertedFlags.json'));
     return response.json();
 }
 
+const flags = loadFlagsData();  ///< Промис, который будет разрешен с данными флагов.
 
-// Основная функция инициализации расширения
+/**
+ * @brief Инициализация расширения.
+ * 
+ * Получает список всех открытых вкладок, собирает информацию о сервере (страна, флаг), 
+ * устанавливает иконки и названия для каждой вкладки, а также добавляет слушатели на обновление и активацию вкладок.
+ */
 async function initExt() {
-    console.log("Вызвана функция initExt()");
 
-    const flags = await loadFlagsData();
-
-    // Получаем список всех вкладок
+    /**
+     * @brief Получение всех открытых вкладок браузера.
+     * @return {Promise<Array>} Возвращает массив объектов вкладок.
+     */
     const tabs = await new Promise((resolve) => {
         chrome.tabs.query({}, (result) => resolve(result));
     });
 
-    // Проходим по каждой вкладке и собираем данные о флаге
-    for (let tab of tabs) {
-        const url = new URL(tab.url); // Создаем объект URL для получения хостнейма
-        const hostname = url.hostname; // Извлекаем хостнейм из URL
-        const result = await getFlagImage(hostname)
-        chrome.action.setIcon({ path: "data:image/png;base64," + result.flagImg, tabId: tab.id })
-        chrome.action.setTitle({ title: `Сервер сайта находится в \n${result.countryName}`, tabId: tab.id })
-        // console.log("result ", result, "hostname ", hostname)
-        tabsArray.push({
+    // Обрабатываем каждую вкладку для сбора информации о сервере и флаге.
+    tabsArray = await Promise.all(tabs.map(async tab => {
+
+        const url = new URL(tab.url); // Создаем объект URL для извлечения хостнейма.
+        const hostname = url.hostname; // Извлекаем хостнейм из URL.
+
+        // Получаем изображение флага и информацию о стране по хостнейму.
+        const result = await getFlagImage(hostname);
+
+        // Устанавливаем иконку флага и название страны для текущей вкладки.
+        chrome.action.setIcon({ path: "data:image/png;base64," + result.flagImg, tabId: tab.id });
+        chrome.action.setTitle({ title: `Сервер сайта находится в \n${result.countryName}`, tabId: tab.id });
+
+        // Возвращаем объект с информацией о вкладке и флаге.
+        return {
             tabId: tab.id,
             hostname,
             flagImg: result.flagImg,
             ips: result.ips,
             countryName: result.countryName
-        })
-    }
+        };
+    }));
 
-    chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-        const result = await tabsArray.find( el => el.hostname == message)
-        if (result) {
-            sendResponse([result, flags[(result.countryName).slice(-3,-1)]]);
-        }
-    });
-
-    // Добавляем слушателя на обновление вкладок
+    // Добавляем слушателя на обновление вкладок.
     chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-        // Проверяем, что обновление завершено и вкладка активна
+        // Проверяем, что обновление вкладки завершено и она активна.
         if (changeInfo.status === 'complete' && tab.active) {
-            const url = new URL(tab.url); // Создаем объект URL для получения хостнейма
-            const hostname = url.hostname; // Извлекаем хостнейм из URL
-            const result = await getFlagImage(hostname)
-            chrome.action.setIcon({ path: "data:image/png;base64," + result.flagImg, tabId: tab.id })
-            chrome.action.setTitle({ title: `Сервер сайта находится в \n${result.countryName}`, tabId: tab.id })
-            console.log("result ", result, "hostname ", hostname)
+            const url = new URL(tab.url); // Создаем объект URL для извлечения хостнейма.
+            const hostname = url.hostname; // Извлекаем хостнейм из URL.
+
+            // Получаем изображение флага и информацию о стране по хостнейму.
+            const result = await getFlagImage(hostname);
+
+            // Обновляем иконку и название для обновленной вкладки.
+            chrome.action.setIcon({ path: "data:image/png;base64," + result.flagImg, tabId: tab.id });
+            chrome.action.setTitle({ title: `Сервер сайта находится в \n${result.countryName}`, tabId: tab.id });
+
+            // Добавляем информацию о вкладке в массив.
             tabsArray.push({
                 tabId: tab.id,
                 hostname,
                 flagImg: result.flagImg,
                 ips: result.ips
-            })
+            });
         }
     });
 
-    // Выводим текущий список вкладок и их флагов в консоль
+    // Выводим текущий массив вкладок и их флагов в консоль.
     console.log(tabsArray);
 }
 
-// Добавляем слушателя на изменение активной вкладки
+// Добавляем слушателя на изменение активной вкладки.
+/**
+ * @brief Обрабатывает изменение активной вкладки и выводит информацию о ней в консоль.
+ * @param {Object} activeInfo Информация об активной вкладке (ID и индекс).
+ */
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
-    // Ищем вкладку в массиве по её ID
+    // Ищем вкладку в массиве по её ID.
     const tab = tabsArray.find(el => el.tabId === activeInfo.tabId);
+
+    // Если вкладка найдена, выводим её данные.
     if (tab) {
-        console.log("Есть в массиве вкладок", tab.tabId)
-        console.log("tabsArray ", tabsArray)
+        console.log("Есть в массиве вкладок", tab.tabId);
+        console.log("tabsArray ", tabsArray);
     } else {
-        // Если вкладка не найдена, выводим сообщение в консоль
+        // Если вкладка не найдена, выводим сообщение об отсутствии.
         console.log('Ещё нет в списке', activeInfo.tabId);
-        console.log("activeInfo ",activeInfo)
+        console.log("activeInfo ", activeInfo);
     }
 });
 
-// Функция для получения изображения флага по хостнейму и данным флагов
+/**
+ * @brief Получает изображение флага и название страны по хостнейму.
+ * @param {string} hostname Хостнейм сайта.
+ * @return {Promise<Object>} Возвращает объект с изображением флага и названием страны.
+ */
 async function getFlagImage(hostname) {
-    // Специальный случай для хостнейма "extensions"
+    // Обрабатываем специальные случаи для браузера и операционной системы.
     if (hostname === "extensions") {
         return {
             countryName: "браузер Chrome",
-            flagImg: 'iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAAXNSR0IArs4c6QAAAMxJREFUKFNjZCARMGJT/8bINIHhHwODyIXTC9DlUTS8NTL/j80A4XMn4ergDFyKQQaATBGBaoJrWHHe9b9r8icGNndXBl6zYrBF/93LGBj+rAWzGfnegdWCieVnnRIYmZjn2xd9ZZDM24riqv/OylD+vyRGvg/zwRqWnXeOZ2JgAnsw4sEqXBoSGfk+LEBxEkilnIAjg9WFTKiTShgY/qzHdBJIBOQH9BAKVz4LF0LxA0wUWRM2xXBPo5u84qJLXLjiGSaQm/FGHDGpBACwJkMN0HyvrgAAAABJRU5ErkJggg=='
+            flagImg: brauserChromeImg
         };
     }
 
     if (hostname === "") {
         return {
             countryName: "операционная система Windows",
-            flagImg: 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAYAAAA7KqwyAAAAAXNSR0IArs4c6QAAAXRJREFUKFNj/PPnz38GJPD27VtkLoOwsDAKH12e8f///3ADQMyXL18ywIS+fPnCoKKiwsDIyAg2BF0eJAY2QGT1PYY3oUpgBbxLbzHcduZjSEtJYpg1Zx6DpKQkg6+3J8PmrdsZbvMJMXBdvwwyieGrpi4D761rDIwgLzAzM8NtePHiBQP/CSmGjxbPwGIgA0AGX3synUFLJhPFhWAXIBvw/ft3hhfPnzNwcHIy/Pj+nYHt91WGXW9iGCKNXzKws7MzvH/3nuHX719wL4IMBnthzZ4jDLlvxRjuC2gzXOA7zCCvIM9w/tw5hta2JobsvjMMJgLXGNTU1RlO19UyXJm3iEFRXZnhh4gwg/6ESRADYMH8ZQUjwxeH53Ab+I5IMSyTZGRItfkH9+LE/SwM4ZpP4DGDEQuf5rIwsMrwMPx58Znhq/tTBhEREYbZx9kZ3r7UZOASusEQrf0UbgE4DP79+4cSja9fv0ZRIC4uDrcN5Fh0eQCCJcxMnIse7gAAAABJRU5ErkJggg=='
+            flagImg: osWindowsImg
         };
     }
 
     try {
-        // Получаем IP-адрес для хостнейма
+        // Запрашиваем IP-адрес и информацию о стране для данного хостнейма.
         const ipResponse = await fetch(`https://linux-academy.ru/what-is-country/${hostname}`);
         const ipData = await ipResponse.json();
-        if(ipData){
-            return ipData
+
+        // Возвращаем данные о стране и флаге.
+        if (ipData) {
+            return ipData;
         }
     } catch (error) {
-        // В случае ошибки при получении информации о стране
+        // Обрабатываем ошибку получения данных о стране.
         console.log('Ошибка при получении страны:', error);
         return {
             countryName: 'Error',
-            flagImg: 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAYAAAA7KqwyAAAAAXNSR0IArs4c6QAAAXRJREFUKFNj/PPnz38GJPD27VtkLoOwsDAKH12e8f///3ADQMyXL18ywIS+fPnCoKKiwsDIyAg2BF0eJAY2QGT1PYY3oUpgBbxLbzHcduZjSEtJYpg1Zx6DpKQkg6+3J8PmrdsZbvMJMXBdvwwyieGrpi4D761rDIwgLzAzM8NtePHiBQP/CSmGjxbPwGIgA0AGX3synUFLJhPFhWAXIBvw/ft3hhfPnzNwcHIy/Pj+nYHt91WGXW9iGCKNXzKws7MzvH/3nuHX719wL4IMBnthzZ4jDLlvxRjuC2gzXOA7zCCvIM9w/tw5hta2JobsvjMMJgLXGNTU1RlO19UyXJm3iEFRXZnhh4gwg/6ESRADYMH8ZQUjwxeH53Ab+I5IMSyTZGRItfkH9+LE/SwM4ZpP4DGDEQuf5rIwsMrwMPx58Znhq/tTBhEREYbZx9kZ3r7UZOASusEQrf0UbgE4DP79+4cSja9fv0ZRIC4uDrcN5Fh0eQCCJcxMnIse7gAAAABJRU5ErkJggg=='
+            flagImg: osWindowsImg
         };
     }
 }
 
-// Инициализируем расширение при запуске
+/**
+ * @brief Слушатель сообщений от popup.js для получения информации о текущей вкладке.
+ * @param {Object} port Соединение с другим скриптом (popup.js).
+ */
+chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === "popup") {
+        port.onMessage.addListener(async (msg) => {
+            if (msg.action === "getData") {
+                // Обрабатываем специальные случаи для локального хостнейма.
+                if (msg.hostname === "extensions" || msg.hostname === "") {
+                    let tab = {
+                        ips: "компьютер",
+                        countryName: "локальный",
+                        bigFlagImg: compBase64String
+                    };
+                    port.postMessage({ data: tab });
+                } else {
+                    // Ищем информацию о вкладке по хостнейму.
+                    let tab = await tabsArray.find(el => el.hostname === msg.hostname);
+                    const shortContryName = await (tab.countryName).slice(-3, -1);
+                    const dataFlags = await flags;
+                    let bigFlagImg = await dataFlags[shortContryName].bigFlagImg;
+                    tab = { ...tab, bigFlagImg };
+                    console.log("tab ", tab);
+                    port.postMessage({ data: tab });
+                }
+            }
+        });
+    }
+});
+
+// Инициализируем расширение при запуске.
 initExt();
