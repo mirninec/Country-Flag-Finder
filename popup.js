@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Получаем ссылки на элементы DOM, где будет отображена информация о стране и флаге.
     const countryNameElement = document.getElementById('countryName');  ///< Элемент для отображения названия страны.
     const countryFlagElement = document.getElementById('countryFlag');  ///< Элемент для отображения флага страны.
-    const test = document.getElementById('test');  ///< Элемент для тестового вывода IP-адресов.
+    const ips = document.getElementById('ips');  ///< Элемент для тестового вывода IP-адресов.
 
     // Получаем текущую активную вкладку браузера.
     /**
@@ -19,18 +19,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         const hostname = url.hostname; // Извлекаем хостнейм из URL.
         if (testLocalTab(hostname)){
             countryNameElement.textContent = "Локальный "
-            test.textContent = "компьютер"
+            ips.textContent = "компьютер"
             countryFlagElement.src = `data:image/png;base64,${compBase64String}`
             return
         }
 
         const id = (activeTab.id).toString()
+        console.log("id ", id)
 
         chrome.storage.local.get([id],async function (result) {
-            if(result) {
-                countryNameElement.textContent = await result[id].countryName
-                countryFlagElement.src = `data:image/png;base64,${result[id].bigFlagImg}`
-                test.textContent = await result[id].ips
+            console.log(`result for id ${id}`, result)
+            if (result && result[id]) {
+                try {
+                    countryNameElement.textContent = result[id].countryName;
+                    countryFlagElement.src = `data:image/png;base64,${result[id].bigFlagImg}`;
+                    ips.textContent = result[id].ips;
+                } catch (error) {
+                    console.error('Ошибка при отображении данных:', error);
+                }
+            } else {
+                console.log(`Данные для вкладки ${id} не найдены`);
+                // Здесь можно вывести сообщение пользователю или выполнить другие действия
             }
         });
     });
