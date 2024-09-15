@@ -1,6 +1,4 @@
-// Массив для хранения информации о вкладках и их флагах
-/** @brief Массив, содержащий объекты с информацией о каждой вкладке, включая флаг страны. */
-let tabsArray = [];
+
 
 /**
  * @brief Загружает данные о флагах из локального файла JSON.
@@ -12,6 +10,41 @@ async function loadFlagsData() {
 }
 
 const flags = loadFlagsData();  ///< Промис, который будет разрешен с данными флагов.
+
+/**
+ * @brief Обновляет иконку и название вкладки, а также сохраняет данные в chrome.storage.
+ * @param {Object} tab Объект вкладки.
+ * @param {Object} result Результат функции getFlagImage с информацией о флаге и стране.
+ */
+async function updateTabInfo(tab, result) {
+    // Устанавливаем иконку флага и название страны для текущей вкладки.
+    chrome.action.setIcon({ path: "data:image/png;base64," + result.flagImg, tabId: tab.id });
+    chrome.action.setTitle({ title: `Сервер сайта находится в \n${result.countryName}`, tabId: tab.id });
+
+    const shortCountryName = result.countryName.slice(-3, -1);
+    const dataFlags = await flags;
+    let bigFlagImg;
+    if (dataFlags[shortCountryName]) {
+        bigFlagImg = dataFlags[shortCountryName].bigFlagImg;
+    }
+
+    const idString = tab.id.toString();
+    const data = {
+        hostname: new URL(tab.url).hostname,
+        flagImg: result.flagImg,
+        bigFlagImg,
+        ips: result.ips,
+        countryName: result.countryName
+    };
+
+    const dataToStore = {
+        [idString]: data
+    };
+
+    chrome.storage.local.set(dataToStore, () => {
+        console.log("Сохранено: ", dataToStore);
+    });
+}
 
 /**
  * @brief Инициализация расширения.
@@ -31,41 +64,8 @@ async function initExt() {
 
     // Обрабатываем каждую вкладку для сбора информации о сервере и флаге.
     tabs.map(async tab => {
-
-        const url = new URL(tab.url); // Создаем объект URL для извлечения хостнейма.
-        const hostname = url.hostname; // Извлекаем хостнейм из URL.
-
-        // Получаем изображение флага и информацию о стране по хостнейму.
-        const result = await getFlagImage(hostname);
-
-        // Устанавливаем иконку флага и название страны для текущей вкладки.
-        chrome.action.setIcon({ path: "data:image/png;base64," + result.flagImg, tabId: tab.id });
-        chrome.action.setTitle({ title: `Сервер сайта находится в \n${result.countryName}`, tabId: tab.id });
-
-        const shortContryName = await (result.countryName).slice(-3, -1);
-        const dataFlags = await flags;
-        let bigFlagImg;
-        if (dataFlags[shortContryName]) {
-            bigFlagImg = await dataFlags[shortContryName].bigFlagImg;
-        }
-
-        const idString = (tab.id).toString()
-
-        const data = {
-            hostname,
-            flagImg: result.flagImg,
-            bigFlagImg,
-            ips: result.ips,
-            countryName: result.countryName
-        };
-
-        const dataToStore = {
-            [idString]: data
-        }
-
-        chrome.storage.local.set(dataToStore, () => {
-            console.log("Сохранено: ", dataToStore)
-        })
+        const result = await getFlagImage(new URL(tab.url).hostname);
+        await updateTabInfo(tab, result);
     });
 
     chrome.storage.local.get(null, function (items) {
@@ -79,91 +79,15 @@ async function initExt() {
 
 // Добавляем слушателя на обновление вкладок.
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    const idString = tabId.toString();
 
-    const tagIdString = tabId.toString()
-
-    chrome.storage.local.get([tagIdString], async function (result) {
-        if (result) {
-            console.log(`Вкдалка ${tabId} сохранена в chrome.storage.local `)
-            // Проверяем, что обновление вкладки завершено и она активна.
-            if (changeInfo.status === 'complete' && tab.active) {
-                const url = new URL(tab.url); // Создаем объект URL для извлечения хостнейма.
-                const hostname = url.hostname; // Извлекаем хостнейм из URL.
-
-                // Получаем изображение флага и информацию о стране по хостнейму.
-                const result = await getFlagImage(hostname);
-
-                // Обновляем иконку и название для обновленной вкладки.
-                chrome.action.setIcon({ path: "data:image/png;base64," + result.flagImg, tabId: tab.id });
-                chrome.action.setTitle({ title: `Сервер сайта находится в \n${result.countryName}`, tabId: tab.id });
-
-                const shortContryName = await (result.countryName).slice(-3, -1);
-                const dataFlags = await flags;
-                let bigFlagImg;
-                if (dataFlags[shortContryName]){
-                    console.log("shortContryName ", shortContryName)
-                    bigFlagImg = await dataFlags[shortContryName].bigFlagImg;
-                }
-
-                const idString = (tab.id).toString()
-
-                const data = {
-                    hostname,
-                    flagImg: result.flagImg,
-                    ips: result.ips,
-                    countryName: result.countryName,
-                    bigFlagImg
-                };
-
-                const dataToStore = {
-                    [idString]: data
-                }
-
-                chrome.storage.local.set(dataToStore, () => {
-                    console.log("Сохранено: ", dataToStore)
-                })
-            }
-        } else {
-            // Проверяем, что обновление вкладки завершено и она активна.
-            if (changeInfo.status === 'complete' && tab.active) {
-                
-                const url = new URL(tab.url); // Создаем объект URL для извлечения хостнейма.
-                const hostname = url.hostname; // Извлекаем хостнейм из URL.
-
-                // Получаем изображение флага и информацию о стране по хостнейму.
-                const result = await getFlagImage(hostname);
-
-                // Обновляем иконку и название для обновленной вкладки.
-                chrome.action.setIcon({ path: "data:image/png;base64," + result.flagImg, tabId: tab.id });
-                chrome.action.setTitle({ title: `Сервер сайта находится в \n${result.countryName}`, tabId: tab.id });
-
-
-                const shortContryName = await (result.countryName).slice(-3, -1);
-                const dataFlags = await flags;
-                let bigFlagImg = await dataFlags[shortContryName].bigFlagImg;
-
-                const idString = (tab.id).toString()
-
-                const data = {
-                    hostname,
-                    flagImg: result.flagImg,
-                    ips: result.ips,
-                    countryName: result.countryName,
-                    bigFlagImg
-                };
-
-                const dataToStore = {
-                    [idString]: data
-                }
-
-                chrome.storage.local.set(dataToStore, () => {
-                    console.log("Сохранено: ", dataToStore)
-                })
-            }
+    chrome.storage.local.get([idString], async function (result) {
+        if (changeInfo.status === 'complete' && tab.active) {
+            const hostname = new URL(tab.url).hostname;
+            const flagData = await getFlagImage(hostname);
+            await updateTabInfo(tab, flagData);
         }
     });
-
-    
 });
 
 // Добавляем слушателя на изменение активной вкладки.
@@ -172,14 +96,13 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
  * @param {Object} activeInfo Информация об активной вкладке (ID и индекс).
  */
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
-
-    const id = (activeInfo.tabId).toString()
+    const id = activeInfo.tabId.toString();
 
     chrome.storage.local.get([id], function (result) {
-        if(result){
-            console.log(`Вкладка ${id} есть в chrome.storage.local`)
+        if (result) {
+            console.log(`Вкладка ${id} есть в chrome.storage.local`);
         } else {
-            console.log(`Вкладки ${id} ещё нет в chrome.storage.local`)
+            console.log(`Вкладки ${id} ещё нет в chrome.storage.local`);
         }
     });
 });
@@ -234,19 +157,16 @@ async function getFlagImage(hostname) {
     }
 }
 
-chrome.tabs.onRemoved.addListener(function (tabId, removeInfo) {
-    // removeInfo содержит информацию о закрытии вкладки, например, был ли это вызвано оконной операцией (например, закрытие окна)
-    console.log(`Вкладка с ID ${tabId} была закрыта`);
-    const id = tabId.toString()
+chrome.tabs.onRemoved.addListener(function (tabId) {
+    const id = tabId.toString();
 
     chrome.storage.local.remove([id], function () {
         console.log(`Вкладка ${id} была удалена из chrome.storage.local`);
-    });    
+    });
 });
 
 // Инициализируем расширение при запуске.
 initExt();
-
 
 
 
